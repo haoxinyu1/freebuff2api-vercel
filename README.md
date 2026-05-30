@@ -11,7 +11,7 @@ Codebuff Freebuff 的 OpenAI-compatible API 适配服务。部署后可以像调
 - 内置 Freebuff / Gemini free agent 模型映射，通过 `/v1/models` 获取模型列表。
 - 支持多个 `FREEBUFF_TOKEN` 账号池，并发请求会优先分配空闲账号。
 - 支持本地 API Key 鉴权，公开部署时可保护 `/v1/*` 接口。
-- 内置 Vue 3 + Naive UI 管理面板，可管理 Token、API Key、Env、日志和模型测试。
+- 内置 Vue 3 + Naive UI 管理面板，可管理 Token、API Key、Env、日志和模型调用。
 - 支持 Vercel 部署；管理面板会明确提示 Vercel 环境变量需要在后台修改并重新部署。
 
 ## 接口
@@ -57,8 +57,8 @@ FREEBUFF_TOKEN=token-a,token-b,token-c
 
 ```dotenv
 FREEBUFF_TOKEN=你的 Freebuff Bearer token
-FREEBUFF_API_KEY=你的本地 API key
-FREEBUFF_ADMIN_KEY=你的管理后台登录 key
+FREEBUFF_API_KEY=
+FREEBUFF_ADMIN_KEY=sk-admin
 FREEBUFF_API_BASE_URL=https://www.codebuff.com
 FREEBUFF_AD_PROVIDERS=gravity,zeroclick
 FREEBUFF_TIMEOUT=60
@@ -77,15 +77,17 @@ FREEBUFF_OS=windows
 FREEBUFF_BROWSER_UA=
 ```
 
+`FREEBUFF_ADMIN_KEY` 默认是 `sk-admin`。启动后可以先用这个默认 key 进入管理面板，再在设置页修改成自己的管理员密钥。公开部署时请务必修改默认值。
+
+`FREEBUFF_TOKEN` 和 `FREEBUFF_API_KEY` 可以先留空，进入管理面板后按页面提示填写。保存后本地或常驻服务器会写回 `.env`，并在当前进程中热更新生效；Vercel 环境会返回应粘贴到 Environment Variables 的文本。
+
 `FREEBUFF_API_KEY` 是你自己给这个 API 服务设置的访问密钥。设置后，请求时需要带上：
 
 ```http
 Authorization: Bearer 你的本地 API key
 ```
 
-如果 `FREEBUFF_API_KEY` 留空，接口将不校验本地访问密钥。公开部署时不建议留空。
-
-`FREEBUFF_ADMIN_KEY` 是管理后台的登录密钥。建议和 `FREEBUFF_API_KEY` 使用不同的值；如果暂时没有设置 `FREEBUFF_ADMIN_KEY`，后台会临时允许用 `FREEBUFF_API_KEY` 登录，登录后可以在设置页重新配置管理密钥。
+如果 `FREEBUFF_API_KEY` 留空，`/v1/*` API 会返回配置错误，避免公开部署时无鉴权暴露；管理面板仍可访问，用来完成初始化。
 
 ### 3. 本地运行
 
@@ -120,11 +122,12 @@ http://127.0.0.1:8000/admin
 管理面板使用 Vue 3 + Naive UI 的浏览器版实现，不需要单独运行前端构建。第一版包含：
 
 - 概览：查看服务状态、账号池数量、模型数量、日志等级和部署环境。
-- Token 管理：以列表形式显示 Freebuff Token，默认只展示脱敏值；点击添加会打开 Token 获取页面，复制 token 后回到面板粘贴保存；支持行内修改、行内删除和单条测试。
+- Token 管理：以列表形式显示 Freebuff Token，默认只展示脱敏值；点击添加会打开 Token 获取页面，复制 token 后回到面板粘贴保存；支持行内修改、行内删除和单条验证。
 - API Key：单独管理 `FREEBUFF_API_KEY`，用于 `/v1/*` 接口的 `Authorization: Bearer <key>`。
 - Env：查看本地项目根目录 `.env` 内容，并复制当前配置文本。
+- 网络：检测当前服务器公网 IP、国家/地区、城市、时区、运营商、代理状态以及 Codebuff/Freebuff 连通性。
 - 日志：查看当前进程内存中的最近运行日志，进入日志页后默认自动刷新，也可按等级筛选、手动刷新和复制。
-- 模型测试：从 `/v1/models` 同结构的模型列表中选择模型，再用当前配置发起一次简单的非流式调用测试。
+- 模型调用：从 `/v1/models` 同结构的模型列表中选择模型，再用当前配置发起一次简单的非流式调用测试。
 - 设置：修改 `FREEBUFF_ADMIN_KEY`，保存后需要重新登录。
 
 注意：为了避免默认暴露密钥，Token 列表不会显示完整 token。只有点击某一行的“修改”时，后台才会读取该行完整 token 并显示在弹窗里。
@@ -147,19 +150,23 @@ Env 查看：
 
 ![Env 查看](docs/images/admin-env.png)
 
+服务器网络检测：
+
+![网络检测](docs/images/admin-network.png)
+
 运行日志：
 
 ![运行日志](docs/images/admin-logs.png)
 
-模型测试：
+模型调用：
 
-![模型测试](docs/images/admin-test.png)
+![模型调用](docs/images/admin-test.png)
 
 ### Vercel 上的限制
 
 管理页面可以随项目一起部署到 Vercel，但 Vercel Serverless 环境不适合运行期永久写入 `.env`。在 Vercel 上使用管理面板时：
 
-- 状态页、日志页、模型测试页只反映当前函数实例的状态。
+- 状态页、日志页、模型调用页只反映当前函数实例的状态。
 - Token/API Key 保存页会返回应配置的环境变量文本，例如 `FREEBUFF_TOKEN=...`。
 - Env 页面会提示到 Vercel 项目 `Settings` -> `Environment Variables` 修改变量。
 - 需要到 Vercel 项目后台的 `Settings` -> `Environment Variables` 粘贴变量并重新部署。
@@ -513,7 +520,7 @@ curl http://127.0.0.1:8000/v1/models `
 4. 在 API Key 页面确认可单独更新 `FREEBUFF_API_KEY`。
 5. 在 Env 页面确认本地显示 `.env`，Vercel 部署时提示去 Environment Variables 修改并重新部署。
 6. 在日志页面确认能看到当前进程日志，并且自动刷新开关默认开启。
-7. 在模型测试页面确认模型列表来自 `/v1/models` 同结构数据。
+7. 在模型调用页面确认模型列表来自 `/v1/models` 同结构数据。
 
 Vercel 自动部署完成后，建议检查：
 
